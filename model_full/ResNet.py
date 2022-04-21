@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 
-from model_structure.Residual_block import BasicBlock, BottleNeck
+from model_structure.Residual_Block import BasicBlock, BottleNeck
 
 
 class ResNet(nn.Module):

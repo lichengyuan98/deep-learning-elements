@@ -6,7 +6,6 @@ import torch.nn as nn
 class BasicBlock(nn.Module):
     """Basic Block for resnet 18 and resnet 34
     """
-    
     # BasicBlock and BottleNeck block
     # have different output size
     # we use class attribute expansion
@@ -73,9 +72,6 @@ class BottleNeck(nn.Module):
         return nn.ReLU(inplace=True)(self.residual_function(x) + self.shortcut(x))
 
 
-
-
-
 if __name__ == '__main__':
     # %% 用图像数据测试basicblock
     x = torch.randn([1, 3, 64, 64])
@@ -88,5 +84,3 @@ if __name__ == '__main__':
     bottleneck_resblock = BottleNeck(in_channels=3, out_channels=10, stride=1)
     output = bottleneck_resblock(x)
     print(output.shape)  # 注意这里扩大了四倍的目标通道数，目的是在ResNet中第2个残差layer开始使用stride为2的卷积
-    
-    

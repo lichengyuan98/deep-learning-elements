@@ -11,23 +11,15 @@ from einops import repeat
 from einops.layers.torch import Rearrange
 from torch import nn
 
-from model_structure.Attention import Attention
-from model_structure.PreNorm import PreNorm
-# %%
-import torch
-from einops import repeat
-from einops.layers.torch import Rearrange
-from torch import nn
-
-from model_structure.Attention import Attention
-from model_structure.PreNorm import PreNorm
+from model_elements.Attention import Attention
+from model_elements.PreNorm import PreNorm
 
 
 def pair(t: int):
     """
     输出为元组，输入可以为元组或整数
     :param t: int
-    :return:
+    :return: tuple
     """
     return t if isinstance(t, tuple) else (t, t)
 
@@ -112,7 +104,7 @@ class ViT(nn.Module):
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_height, p2=patch_width),
             nn.Linear(patch_dim, dim),
         )  # 将一个图像转换为h*w个patch的embedding
-    
+
         self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))  # 位置编码是通过学习得到的
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))  # 支出来的类别编码也是通过学习得到的
         self.dropout = nn.Dropout(emb_dropout)
