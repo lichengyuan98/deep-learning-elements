@@ -1,6 +1,7 @@
-#%%
+# %%
 import torch
 import torch.nn as nn
+
 from model_structure.Residual_block import BasicBlock, BottleNeck
 
 
@@ -65,10 +66,11 @@ class ResNet(nn.Module):
         
         return output
 
+
 if __name__ == '__main__':
     # %% 用图像数据测试resnet18
     # 使用的是basicblock残差块，2~5残差layer中的block数量分别是[2,2,2,2]
-    x = torch.randn([1, 3, 64, 64]) # [B, C, H, W]
+    x = torch.randn([1, 3, 64, 64])  # [B, C, H, W]
     res18 = ResNet(BasicBlock, [2, 2, 2, 2])
     output = res18(x)
     print(output.shape)
