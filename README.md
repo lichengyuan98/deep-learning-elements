@@ -77,11 +77,11 @@ DL）的诊断模型发展迅速，并且取得了在速度和精度上显著超
 
 + ### **VAE**: Variational Auto-Encoder
 
-> ***(TODO)*** 完成一个在encoder阶段没有发生维度变化的MAE版本，维度变化仅仅发生在Encoder Transformer至Latent code，以及Latent code至Decoder Transformer阶段
 
 > 基于假设：一张图像是由若干**正态分布**的**隐变量**所控制并生成的。因此学习的目的是找到这些隐变量的分布
 
 + ### **MAE**: Masked Auto-Encoder
+> ***(TODO)*** 完成一个在encoder阶段没有发生维度变化的MAE版本，维度变化仅仅发生在Encoder Transformer至Latent code，以及Latent code至Decoder Transformer阶段
 
 > 基于ViT的遮掩AE，大致流程是：
 >
