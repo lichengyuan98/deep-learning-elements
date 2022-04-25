@@ -6,11 +6,12 @@ from model_elements.PreNorm import PreNorm
 
 
 class MBConv(nn.Module):
-    def __init__(self, inp, oup, downsample=False, expansion=4):
+    def __init__(self, inp, oup, image_size, downsample=False, expansion=4):
         """
         MBConv由一个包含分组卷积、SE模块的前馈通道和短路残差连接组合而成。网络经过了通道数量先变胖再变瘦的过程
         :param inp: 输入通道数
         :param oup: 输出通道数
+        :param image_size: 没啥用，因为是卷积层，所以可以不用输入。只是为了在CoAtNet中保证形式一致
         :param downsample: bool，是否降采样
         :param expansion: 通道数变胖的倍数
         """
@@ -52,7 +53,7 @@ class MBConv(nn.Module):
                           groups=hidden_channels, bias=False),
                 nn.BatchNorm2d(hidden_channels),
                 nn.GELU(),
-                SE(hidden_channels, inp),
+                SE(hidden_channels, int(hidden_channels * 0.8)),
                 # pw-linear
                 nn.Conv2d(hidden_channels, oup, 1, 1, 0, bias=False),
                 nn.BatchNorm2d(oup),
@@ -73,7 +74,7 @@ if __name__ == '__main__':
     x = torch.randn([1, 3, 64, 64])
     mbconv = MBConv(inp=3, oup=10, downsample=False)
     output = mbconv(x)
-    print(output.shape)
+    print(output.shape)  # [1, 3, 64, 64]
     
     # %% 测试降采样的MBConv
     x = torch.randn([1, 3, 64, 64])

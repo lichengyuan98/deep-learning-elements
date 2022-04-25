@@ -13,6 +13,7 @@ from torch import nn
 
 from model_elements.Attention import Attention
 from model_elements.PreNorm import PreNorm
+from model_elements.Transformer import Transformer
 
 
 def pair(t: int):
@@ -48,33 +49,8 @@ class FeedForward(nn.Module):
         return self.net(x)
 
 
-class Transformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout=0.):
-        """
-        :param dim: 一个词向量维度
-        :param depth: 多少个自注意力层
-        :param heads: 多头自注意力的头数
-        :param dim_head: 单头自注意力变换维度
-        :param mlp_dim: Transformer Encoder模块最终输出的最后一维维度
-        :param dropout: dropout比例
-        """
-        super().__init__()
-        self.layers = nn.ModuleList([])
-        for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                PreNorm(dim, Attention(dim, heads=heads, dim_head=dim_head, dropout=dropout)),
-                PreNorm(dim, FeedForward(dim, mlp_dim, dropout=dropout))
-            ]))
-    
-    def forward(self, x):
-        for attn, ff in self.layers:
-            x = attn(x) + x
-            x = ff(x) + x
-        return x
-
-
 class ViT(nn.Module):
-    def __init__(self, *, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, pool='cls', channels=3,
+    def __init__(self, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, pool='cls', channels=3,
                  dim_head=64, dropout=0., emb_dropout=0.):
         """
         :param image_size: (h, w) or h, 图像尺寸
@@ -120,20 +96,26 @@ class ViT(nn.Module):
         )
     
     def forward(self, img):
+        # 首先把图像编码成词向量序列
         x = self.to_patch_embedding(img)
         b, n, _ = x.shape
         
+        # 在词向量序列头部加上一个类别token
         cls_tokens = repeat(self.cls_token, '1 n d -> b n d', b=b)
         x = torch.cat((cls_tokens, x), dim=1)
+        
+        # 给词向量序列加入可学习的位置编码
         x += self.pos_embedding[:, :(n + 1)]
         x = self.dropout(x)
         
+        # 将词向量序列通过多层Transformer获取词向量之间的相关信息，同时张量形状不发生变化
         x = self.transformer(x)
         
+        # 将一个词向量序列通过某些方式变成一个向量[B, N, D] -> [B, Dim]
         x = x.mean(dim=1) if self.pool == 'mean' else x[:, 0]
         
         x = self.to_latent(x)
-        return self.mlp_head(x)
+        return self.mlp_head(x)  # [B, Dim] -> [B, num_classes]
 
 
 if __name__ == '__main__':

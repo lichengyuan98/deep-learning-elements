@@ -39,4 +39,4 @@ if __name__ == '__main__':
     x = torch.randn([1, 3, 64, 64])
     se = SE(in_channel=3, mlp_dim=5)
     output = se(x)
-    print(output.shape)
+    print(output.shape)  # [1, 3, 64, 64]

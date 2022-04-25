@@ -57,4 +57,4 @@ if __name__ == '__main__':
     x = torch.rand([1, 64, 128])
     attn = Attention(dim=128, heads=8, dim_head=64, dropout=0.1)
     output = attn(x)
-    print(x.shape)
+    print(x.shape)  # [1, 64, 128]
