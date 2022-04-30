@@ -49,17 +49,29 @@ DL）的诊断模型发展迅速，并且取得了在速度和精度上显著超
 > 1. **O(NxN)** 的时间复杂度
 >
 
-+ ### **PreNorm**
++ ### **Compile Seq**
 
-> 在进行一次`nn.Module`之前对数据进行一次归一化
+> 将一个不定长的词向量序列`[B, N, D]`通过LSTM编码成隐变量`[B, latent_dim]`，同时考虑最重要特征的位置，如`class token`
+
++ ### **Patch Embedding**
+
+> 将一个图像`[B, C, H, W]`变换成词向量序列`[B, N, D]`
 
 + ### **PE**: Positional Encoding
 
 > 利用Self Attention或CNN处理时间序列数据，保留时序特征
 
++ ### **PreNorm**
+
+> 在进行一次`nn.Module`之前对数据进行一次归一化
+
 + ### **SE**: Squeeze and Excitation
 
 > 自动计算特征层中每个通道的重要度，并加权
+
++ ### **Transformer**
+
+> 通过多层多头自注意力机制和残差连接对任意长度的词向量`[B, N, D]`进行编码，输入张量形状仍为`[B, N, D]`
 
 ## 3. 框架——可以随意组合或修改
 
@@ -81,8 +93,6 @@ DL）的诊断模型发展迅速，并且取得了在速度和精度上显著超
 > 基于假设：一张图像是由若干**正态分布**的**隐变量**所控制并生成的。因此学习的目的是找到这些隐变量的分布
 
 + ### **MAE**: Masked Auto-Encoder
-> ***(TODO)*** 完成一个在encoder阶段没有发生维度变化的MAE版本，维度变化仅仅发生在Encoder Transformer至Latent code，以及Latent code至Decoder Transformer阶段
-
 > 基于ViT的遮掩AE，大致流程是：
 >
 > 1. 每个词向量序列打乱后，摘除部分词向量
@@ -97,5 +107,9 @@ DL）的诊断模型发展迅速，并且取得了在速度和精度上显著超
 ## 4. 套餐——网络成品
 
 + **ResNet**：Residual Network
-
 + **CoAtNet**: Convolution (MBConv) + Attention (relative)
+
+## 5. 自己搭的网络
+
++ **Padded AE**：基于MAE开发的网络框架，形状`[B, N, D]`的张量对序列随机按照比例进行归零遮掩，在Encoder经过多层Transformer后形状为`[B, N, D]`，然后利用LSTM在`N`
+  维度上滑动进行编码获得序列的隐变量，此时张量的形状变成`[B, latent_dim]`，随后通过线性层和维度变化将张量形状还原至`[B, N, D]`，最后通过多层Transformer编码后输出
