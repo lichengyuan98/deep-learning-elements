@@ -5,6 +5,10 @@ from einops.layers.torch import Rearrange
 
 
 class PatchEmbed(nn.Module):
+    """
+    目的是把一个多通道的图像转化为词向量序列
+    """
+    
     def __init__(self,
                  img_size,
                  patch_size,

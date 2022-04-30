@@ -29,14 +29,14 @@ if __name__ == '__main__':
                        stride=(1, 1), padding=(1, 1))
     conv2d_prenorm = PreNorm(3, conv2d, nn.BatchNorm2d)  # 3是输入通道数，也是输入BatchNorm2d的维度
     output = conv2d_prenorm(x)
-    print(output.shape)
-    
+    print(output.shape)  # [1, 5, 16, 16]
+
     # %% 当输入是个词向量时
     # B是Batch大小，N是词向量长度，D是词向量的嵌入维度
     from model_elements.Attention import Attention
-    
+
     x = torch.randn([1, 64, 128])  # [B, N, D]
-    attn = Attention(128, heads=8, dim_head=64, dropout=0.1)
-    attn_prenorm = PreNorm(128, attn, nn.LayerNorm)
+    attn = Attention(dim=128, heads=8, dim_head=64, dropout=0.1)
+    attn_prenorm = PreNorm(128, attn, nn.LayerNorm)  # 128是词向量嵌入维度，也是LayerNorm的影响维度
     output = attn_prenorm(x)
-    print(output.shape)
+    print(output.shape)  # [1, 64, 128]

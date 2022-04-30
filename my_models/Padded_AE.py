@@ -2,22 +2,25 @@ import torch
 import torch.nn as nn
 
 from model_elements.Transformer import Transformer
+from model_elements.Compile_Seq import CompileSeq
+from einops.layers.torch import Rearrange
 
 
-class MaskedAutoencoderViT(nn.Module):
+class PaddedAE(nn.Module):
     """
-    MaskedAE本质上是将一个词向量序列遮住一部分，剩下的部分通过若干个Transformer进行编码学习到隐变量
-    然后通过若干次Transformer对隐变量进行编码，恢复至原来的词向量序列维度
-    因此在mask过程中直接将Patch Embedding部分摘除[B, N, D] -> [B, N*(1-mask_ratio), D]
+    基于MAE开发的网络框架，形状`[B, N, D]`的张量在序列维度按照比例随机进行归零遮掩，
+    在Encoder经过多层Transformer后形状为`[B, N, D]`，然后利用LSTM在`N`维度上滑动进行编码获得序列的隐变量，此时张量的形状变成`[B, latent_dim]`，
+    随后通过线性层和维度变化将张量形状还原至`[B, N, D]`，最后通过多层Transformer编码后输出
     """
     
     def __init__(self, length,
-                 embed_dim=1024, depth=24, num_heads=16,
-                 decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
+                 embed_dim=128, latent_dim=32, depth=4, num_heads=4,
+                 decoder_embed_dim=128, decoder_depth=4, decoder_num_heads=4,
                  mlp_ratio=0.8, norm_layer=nn.LayerNorm):
         """
         :param length: 词向量序列长度
         :param embed_dim: 词向量嵌入维度
+        :param latent_dim: 隐变量维度
         :param depth: encoder中Transformer块的个数
         :param num_heads: encoder中多头自注意力的头数
         :param decoder_embed_dim: decoder中输入的词向量嵌入维度
@@ -40,9 +43,19 @@ class MaskedAutoencoderViT(nn.Module):
                                   mlp_ratio=mlp_ratio)  # 随机遮掩之后将剩余可见的词向量序列投入Transformer中进行编码
         
         self.norm = norm_layer(embed_dim)
+        self.encoder_to_latent = CompileSeq(dim=embed_dim, latent_dim=latent_dim, reverse=True)
         
         # MAE decoder specifics
+        self.latent_to_decoder = nn.Sequential(nn.Linear(latent_dim, embed_dim * length // 2),
+                                               nn.GELU(),
+                                               nn.Dropout(0.),
+                                               nn.Linear(embed_dim * length // 2, embed_dim * length),
+                                               nn.ELU(),
+                                               nn.Dropout(0.),
+                                               Rearrange("B (N D) -> B N D", N=length))
+        
         self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)  # 进入Decoder前首先把词向量嵌入维度扩大至理想值
+        self.cls_token_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)  # 进入Decoder前首先把cls token嵌入维度扩大至理想值
         
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))  #
         
@@ -65,8 +78,7 @@ class MaskedAutoencoderViT(nn.Module):
         Per-sample shuffling is done by argsort random noise.
         x: [N, L, D], sequence
         首先将x在dim=1（词向量序列长度维度）上进行打乱，然后选取mask_ratio的比例进行遮掩
-        最后输出的x_mask[N, L*mask_ratio, D]是打乱并遮掩的词向量序列batch
-        mask是形状为[N, L]的位置掩码，restore[N, L]则为每一个序列打乱的index
+        mask是形状为[N, L]的位置掩码
         """
         N, L, D = x.shape  # batch, length, dim
         len_keep = int(L * (1 - mask_ratio))  # 保留下来的词向量长度
@@ -77,49 +89,44 @@ class MaskedAutoencoderViT(nn.Module):
         ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
         ids_restore = torch.argsort(ids_shuffle, dim=1)
         
-        # keep the first subset
-        ids_keep = ids_shuffle[:, :len_keep]
-        x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
-        
         # generate the binary mask: 0 is keep, 1 is remove
         mask = torch.ones([N, L], device=x.device)
         mask[:, :len_keep] = 0
         # unshuffle to get the binary mask
-        mask = torch.gather(mask, dim=1, index=ids_restore)
+        mask = torch.gather(mask, dim=1, index=ids_restore).bool()
         
-        return x_masked, mask, ids_restore
+        # pad x with mask
+        x_padded = torch.masked_fill(x, mask.unsqueeze(-1).repeat(1, 1, D), 0)
+        
+        return x_padded, mask  # x: [B, N, D]
     
     def forward_encoder(self, x, mask_ratio):
         # add pos embed w/o cls token
-        # [B, N, D]
+        # x: [B, N, D]
         x = x + self.pos_embed[:, 1:, :]
         
-        # masking: length -> length * mask_ratio
-        # [B, N*(1-mask_ratio), D]
-        x, mask, ids_restore = self.random_masking(x, mask_ratio)
+        x, mask = self.random_masking(x, mask_ratio)  # x: [B, N, D]
         
         # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :]
-        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
-        x = torch.cat((cls_tokens, x), dim=1)
+        cls_token = self.cls_token + self.pos_embed[:, :1, :]  # [1, 1, D]
+        cls_tokens = cls_token.expand(x.shape[0], -1, -1)  # [B, 1, D]
+        x = torch.cat((cls_tokens, x), dim=1)  # x: [B, N+1, D]
         
         # apply Transformer blocks
-        x = self.blocks(x)
-        x = self.norm(x)
+        x = self.blocks(x)  # x: [B, N+1, D]
+        x = self.norm(x)  # x: [B, N+1, D]
         
-        return x, mask, ids_restore
+        return x, mask
     
-    def forward_decoder(self, x, ids_restore):
+    def forward_decoder(self, x, cls_token):
         # embed tokens
         x = self.decoder_embed(x)
+        cls_token = self.cls_token_embed(cls_token)
         
         # append mask tokens to sequence
-        mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
-        x_ = torch.cat([x[:, 1:, :], mask_tokens], dim=1)  # no cls token
-        x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
-        x = torch.cat([x[:, :1, :], x_], dim=1)  # append cls token
+        x = torch.cat([cls_token, x], dim=1)  # append cls token 这个cls token是由encoder部分传递过来的，即从encoder部分的信息直接到达decoder
         
-        # add pos embed
+        # add pos embed 这个pos embed在encoder和decoder中不同的
         x = x + self.decoder_pos_embed
         
         # apply Transformer blocks
@@ -135,15 +142,20 @@ class MaskedAutoencoderViT(nn.Module):
         return x
     
     def forward(self, imgs, mask_ratio=0.75):
-        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)  # # 这里latent是对遮掩后的词向量编码后的隐变量
-        pred = self.forward_decoder(latent, ids_restore)  # [N, L, p0*p1*c]
-        return pred
+        x, mask = self.forward_encoder(imgs, mask_ratio)
+        latent = self.encoder_to_latent(x)
+        reconstruct = self.latent_to_decoder(latent)
+        pred = self.forward_decoder(reconstruct, x[:, :1, :])
+        return pred, latent
 
 
 # %%
 if __name__ == '__main__':
-    x = torch.randn([1, 100, 32])
-    mae = MaskedAutoencoderViT(length=100,
-                               embed_dim=32)
-    output = mae(x, mask_ratio=0.8)
-    print(output.shape)  # [1, 100, 32]
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    x = torch.randn([4, 100, 32]).to(device)
+    pae = PaddedAE(length=100,
+                   embed_dim=32,
+                   latent_dim=16).to(device)
+    output, latent = pae(x, mask_ratio=0.8)
+    print(output.shape)  # [4, 100, 32]
+    print(latent.shape)  # [4, 16]

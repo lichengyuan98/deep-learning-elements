@@ -8,9 +8,10 @@ from torch import Tensor
 
 def positional_encoding(length, dim) -> Tensor:
     """
+    这个位置编码可以支持词向量嵌入维度为奇的情况
     :param length: 词向量的长度
     :param dim: 每个词向量的嵌入维度
-    :return: Tensor
+    :return:
     """
     pe = torch.zeros(length, dim)
     position = torch.arange(0, length).unsqueeze(1)
